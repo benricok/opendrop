@@ -161,6 +161,13 @@ class AirDropServerHandler(BaseHTTPRequestHandler):
         body = "\n".encode("utf-8")
         self._set_response(len(body))
         self.wfile.write(body)
+    
+    def handle(self):
+        try:
+            super().handle()
+        except ConnectionResetError:
+            # Ignore abrupt TCP RST packets from Apple devices
+            pass
 
     def handle_discover(self):
         if content_length := self.headers.get("Content-Length"):
@@ -169,9 +176,18 @@ class AirDropServerHandler(BaseHTTPRequestHandler):
             post_data = bytearray()
             while True:
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Transfer-Encoding#chunked_encoding
-                chunk_size = int(self.rfile.readline().rstrip(b"\r\n"),)
+                chunk_size = int(self.rfile.readline().rstrip(b"\r\n"), 16)
+                #chunk_size = int(self.rfile.readline().rstrip(b"\r\n"),)
+                #if chunk_size == 0: # end of chunks
+                #    self.rfile.read() # consume rest of the input
+                #    break
                 if chunk_size == 0: # end of chunks
-                    self.rfile.read() # consume rest of the input
+                    max_trailers = 50
+                    while max_trailers > 0:
+                        line = self.rfile.readline()
+                        if line in (b'\r\n', b'\n', b''):
+                            break
+                        max_trailers -= 1
                     break
                 chunk_bytes = self.rfile.read(chunk_size)
                 post_data.extend(chunk_bytes)
